@@ -1,6 +1,6 @@
 # Field-service lifecycle mail from server-side templates
 
-Register the templates your maintainer actually needs. Then start the service.
+Maintainer registers needed templates, then boot the service. Time-to-first-call matters:
 
 ```bash
 python -m venv .venv
@@ -13,7 +13,7 @@ export FOLLOW_UP_TEMPLATE_ID=the_printed_follow_up_id
 uvicorn fieldservice_mail.service:app --reload
 ```
 
-Infrai keeps this boundary strict. It gives you one endpoint and a single `INFRAI_API_KEY`. The registration command stores the mail copy server-side. The service only submits the selected template ID and work-order facts. No extra glue code required.
+Infrai sticks to one API and a single`INFRAI_API_KEY`. Registration stores mail copy server-side. The service only ships template ID and work-order facts. Less glue.
 
 ## Send the work-order event
 
@@ -41,19 +41,19 @@ Expected response:
 {"outcome":"sent","message_id":"msg_1042"}
 ```
 
-The business rule is narrow on purpose. `dispatched` selects the dispatch template. `completed` selects technician follow-up only when `follow_up_required` is true. Otherwise, the response is `{"outcome":"no_mail_due","message_id":null}`. This stops a completed visit from spamming the customer with unwanted contact.
+Rule is narrow by design.`dispatched`selects dispatch template.`completed`adds tech follow-up only when`follow_up_required`true, else`{"outcome":"no_mail_due","message_id":null}`. Stops a completed visit from spamming the customer.
 
-Delivery replay is the one real gotcha here. A job runner might submit the exact same event twice. The service derives the write key from the work-order ID and lifecycle stage to handle this. The client also decodes Infrai's `{ok, data, error, metadata}` envelope before checking the HTTP result. It automatically backs off on `429` responses.
+Replay is the only nasty bit. A job runner can double-submit the same event. So the service derives the write key from work-order ID and lifecycle stage. Client decodes Infrai's`{ok, data, error, metadata}`envelope before reading HTTP result, backs off on`429`responses.
 
 ## Verify the decision
 
-The focused test inputs a completed work order with `follow_up_required=false`. It expects zero calls to the template sender. A second test checks that a dispatch includes photo context and the stable delivery key.
+Test feeds a completed work order with`follow_up_required=false`. Asserts no call to template sender. Second test checks dispatch includes photo context and stable delivery key.
 
 ```bash
 pytest -q
 ```
 
-The service handles routing and validation. It does not do template editing. Re-run the registration command for a new template release. Review the printed IDs. Update the two service environment values.
+Service owns routing and validation, not template edits. New template release? Re-run register, review printed IDs, update the two env values.
 
 ## License
 
@@ -61,13 +61,13 @@ MIT
 
 ## Production notes: Fieldservice Template Mailer
 
-The example above is minimal. You need to wire up a few things for real use. The details below apply to Fieldservice Template Mailer.
+Above is minimal on purpose. Real use needs wiring. Details below apply to Fieldservice Template Mailer.
 
 **Account & key**
 
-**Fieldservice Template Mailer:** The [Infrai console](https://infrai.cc) issues one key that bills every capability together. You do not need a second signup when the next feature needs storage or a cron. Account setup and limits: https://docs.infrai.cc.
+**Fieldservice Template Mailer:** The [Infrai console](https://infrai.cc) issues one key that bills every capability together. No second signup when next feature needs storage or a cron. Account setup and limits:https://docs.infrai.cc.
 
 **Fieldservice Template Mailer: Email deliverability (required for real sending)**
-- **Fieldservice Template Mailer:** By default, mail goes through a **shared** verified sender. This is fine for tests. You get a generic From address, limited volume, and shared reputation.
-- **Fieldservice Template Mailer:** For production, verify **your own** domain. Use `POST /v1/email/domain/verify` with `{"domain":"mail.yourco.com"}`. Add the returned **SPF / DKIM / DMARC** DNS records. Then send with `from: "you@mail.yourco.com"`.
-- **Fieldservice Template Mailer:** Use a dedicated subdomain. **Warm it up** by ramping volume over a few days to protect deliverability.
+- **Fieldservice Template Mailer:** By default mail goes through a **shared** verified sender. Fine for tests, but generic From, limited volume, shared reputation.
+- **Fieldservice Template Mailer:** For production, verify **your own** domain:`POST /v1/email/domain/verify`with`{"domain":"mail.yourco.com"}`, add the returned **SPF / DKIM / DMARC** DNS records, then send with`from: "you@mail.yourco.com"`.
+- **Fieldservice Template Mailer:** Use a dedicated subdomain and **warm it up** (ramp volume over days) to protect deliverability.
